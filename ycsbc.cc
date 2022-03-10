@@ -39,6 +39,12 @@ int DelegateClient(ycsbc::DB *db, ycsbc::CoreWorkload *wl, const int num_ops,
   return oks;
 }
 
+std::map<string, string> default_props = {
+  {"threadcount", "1"},
+  {"dbname", "basic"}
+};
+
+
 int main(const int argc, const char *argv[]) {
   utils::Properties props;
   string file_name = ParseCommandLine(argc, argv, props);
@@ -95,6 +101,11 @@ int main(const int argc, const char *argv[]) {
 string ParseCommandLine(int argc, const char *argv[], utils::Properties &props) {
   int argindex = 1;
   string filename;
+
+  for (auto const & [key, val] : default_props) {
+    props.SetProperty(key, val);
+  }
+
   while (argindex < argc && StrStartWith(argv[argindex], "-")) {
     if (strcmp(argv[argindex], "-threads") == 0) {
       argindex++;
@@ -169,8 +180,8 @@ string ParseCommandLine(int argc, const char *argv[], utils::Properties &props) 
 void UsageMessage(const char *command) {
   cout << "Usage: " << command << " [options]" << endl;
   cout << "Options:" << endl;
-  cout << "  -threads n: execute using n threads (default: 1)" << endl;
-  cout << "  -db dbname: specify the name of the DB to use (default: basic)" << endl;
+  cout << "  -threads n: execute using n threads (default: " << default_props["threadcount"] << ")" << endl;
+  cout << "  -db dbname: specify the name of the DB to use (default: " << default_props["dbname"] << ")" << endl;
   cout << "  -P propertyfile: load properties from the given file. Multiple files can" << endl;
   cout << "                   be specified, and will be processed in the order specified" << endl;
 }

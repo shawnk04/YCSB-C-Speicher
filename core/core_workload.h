@@ -145,12 +145,16 @@ class CoreWorkload {
   /// Called once, in the main client thread, before any operations are started.
   ///
   virtual void Init(const utils::Properties &p);
-  
+
+  void InitKeyBuffer(std::string &buffer);
+
+  virtual void InitPairs(std::vector<ycsbc::DB::KVPair> &values);
   virtual void BuildValues(std::vector<ycsbc::DB::KVPair> &values);
+  virtual void UpdateValues(std::vector<ycsbc::DB::KVPair> &values);
   virtual void BuildUpdate(std::vector<ycsbc::DB::KVPair> &update);
   
   virtual std::string NextTable() { return table_name_; }
-  virtual std::string NextSequenceKey(); /// Used for loading data
+  virtual void NextSequenceKey(std::string &buffer); /// Used for loading data
   virtual std::string NextTransactionKey(); /// Used for transactions
   virtual Operation NextOperation() { return op_chooser_.Next(); }
   virtual std::string NextFieldName();
@@ -177,6 +181,7 @@ class CoreWorkload {
  protected:
   static Generator<uint64_t> *GetFieldLenGenerator(const utils::Properties &p);
   std::string BuildKeyName(uint64_t key_num);
+  void UpdateKeyName(uint64_t key_num, std::string &buffer);
 
   std::string table_name_;
   int field_count_;
@@ -194,9 +199,14 @@ class CoreWorkload {
   int zero_padding_;
 };
 
-inline std::string CoreWorkload::NextSequenceKey() {
+inline void CoreWorkload::InitKeyBuffer(std::string &buffer) {
+  buffer = BuildKeyName(0);
+}
+
+inline void CoreWorkload::NextSequenceKey(std::string &buffer) {
   uint64_t key_num = key_generator_->Next();
-  return BuildKeyName(key_num);
+  //buffer = BuildKeyName(key_num);
+  UpdateKeyName(key_num, buffer);
 }
 
 inline std::string CoreWorkload::NextTransactionKey() {
@@ -215,6 +225,19 @@ inline std::string CoreWorkload::BuildKeyName(uint64_t key_num) {
   int zeros = zero_padding_ - key_num_str.length();
   zeros = std::max(0, zeros);
   return std::string("user").append(zeros, '0').append(key_num_str);
+}
+
+inline void CoreWorkload::UpdateKeyName(uint64_t key_num, std::string &buffer) {
+  if (!ordered_inserts_) {
+    key_num = utils::Hash(key_num);
+  }
+  char internal_buffer[21];
+  snprintf(internal_buffer, sizeof(internal_buffer), "%020lu", key_num);
+  int len = buffer.size();
+  assert(24 <= len);
+  for (unsigned int i = 0; i < sizeof(internal_buffer) - 1; i++) {
+    buffer[len - 20 + i] = internal_buffer[i];
+  }
 }
 
 inline std::string CoreWorkload::NextFieldName() {

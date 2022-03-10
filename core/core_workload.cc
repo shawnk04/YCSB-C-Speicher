@@ -58,7 +58,7 @@ const string CoreWorkload::REQUEST_DISTRIBUTION_PROPERTY =
 const string CoreWorkload::REQUEST_DISTRIBUTION_DEFAULT = "uniform";
 
 const string CoreWorkload::ZERO_PADDING_PROPERTY = "zeropadding";
-const string CoreWorkload::ZERO_PADDING_DEFAULT = "1";
+const string CoreWorkload::ZERO_PADDING_DEFAULT = "20";
 
 const string CoreWorkload::MAX_SCAN_LENGTH_PROPERTY = "maxscanlength";
 const string CoreWorkload::MAX_SCAN_LENGTH_DEFAULT = "1000";
@@ -187,11 +187,28 @@ ycsbc::Generator<uint64_t> *CoreWorkload::GetFieldLenGenerator(
 }
 
 void CoreWorkload::BuildValues(std::vector<ycsbc::DB::KVPair> &values) {
+  values.clear();
   for (int i = 0; i < field_count_; ++i) {
     ycsbc::DB::KVPair pair;
     pair.first.append("field").append(std::to_string(i));
     pair.second.append(field_len_generator_->Next(), utils::RandomPrintChar());
     values.push_back(pair);
+  }
+}
+
+void CoreWorkload::InitPairs(std::vector<ycsbc::DB::KVPair> &values) {
+  for (int i = 0; i < field_count_; ++i) {
+    ycsbc::DB::KVPair pair;
+    pair.first.append("field").append(std::to_string(i));
+    pair.second.append(field_len_generator_->Next(), '_');
+    values.push_back(pair);
+  }
+}
+
+void CoreWorkload::UpdateValues(std::vector<ycsbc::DB::KVPair> &values) {
+  assert(values.size() == (unsigned int)field_count_);
+  for (int i = 0; i < field_count_; ++i) {
+    values[i].second[0] = utils::RandomPrintChar();
   }
 }
 

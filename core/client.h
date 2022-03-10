@@ -18,7 +18,10 @@ namespace ycsbc {
 
 class Client {
  public:
-  Client(DB &db, CoreWorkload &wl) : db_(db), workload_(wl) { }
+  Client(DB &db, CoreWorkload &wl) : db_(db), workload_(wl) {
+    workload_.InitKeyBuffer(key);
+    workload_.InitPairs(pairs);
+  }
   
   virtual bool DoInsert();
   virtual bool DoTransaction();
@@ -35,12 +38,13 @@ class Client {
   
   DB &db_;
   CoreWorkload &workload_;
+  std::string key;
+  std::vector<DB::KVPair> pairs;
 };
 
 inline bool Client::DoInsert() {
-  std::string key = workload_.NextSequenceKey();
-  std::vector<DB::KVPair> pairs;
-  workload_.BuildValues(pairs);
+  workload_.NextSequenceKey(key);
+  workload_.UpdateValues(pairs);
   return (db_.Insert(workload_.NextTable(), key, pairs) == DB::kOK);
 }
 
@@ -132,7 +136,7 @@ inline int Client::TransactionUpdate() {
 
 inline int Client::TransactionInsert() {
   const std::string &table = workload_.NextTable();
-  const std::string &key = workload_.NextSequenceKey();
+  workload_.NextSequenceKey(key);
   std::vector<DB::KVPair> values;
   workload_.BuildValues(values);
   return db_.Insert(table, key, values);
