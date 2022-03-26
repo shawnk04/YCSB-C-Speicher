@@ -75,12 +75,12 @@ class BasicDB : public DB {
 
   int Insert(const std::string &table, const std::string &key,
              std::vector<KVPair> &values) {
-    //std::lock_guard<std::mutex> lock(mutex_);
-    // cout << "INSERT " << table << ' ' << key << " [ ";
-    // for (auto v : values) {
-    //   cout << v.first << '=' << v.second << ' ';
-    // }
-    // cout << ']' << endl;
+    std::lock_guard<std::mutex> lock(mutex_);
+    cout << "INSERT " << table << ' ' << key << " [ ";
+    for (auto v : values) {
+      cout << v.first << '=' << v.second << ' ';
+    }
+    cout << ']' << endl;
     return 0;
   }
 

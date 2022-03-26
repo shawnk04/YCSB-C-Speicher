@@ -1,30 +1,27 @@
 //
-//  splinter_db.h
+//  rocks_db.h
 //  YCSB-C
 //
 
-#ifndef YCSB_C_SPLINTER_DB_H_
-#define YCSB_C_SPLINTER_DB_H_
+#ifndef YCSB_C_ROCKS_DB_H_
+#define YCSB_C_ROCKS_DB_H_
 
 #include "core/db.h"
 
 #include <iostream>
 #include <string>
 #include "core/properties.h"
-
-extern "C" {
-#include "splinterdb/splinterdb.h"
-}
+#include "rocksdb/db.h"
 
 using std::cout;
 using std::endl;
 
 namespace ycsbc {
 
-class SplinterDB : public DB {
+class RocksDB : public DB {
 public:
-  SplinterDB(utils::Properties &props, bool preloaded);
-  ~SplinterDB();
+  RocksDB(utils::Properties &props, bool preloaded);
+  ~RocksDB();
 
   void Init();
   void Close();
@@ -46,13 +43,15 @@ public:
   int Delete(const std::string &table, const std::string &key);
 
 private:
-  splinterdb_config         splinterdb_cfg;
-  data_config               data_cfg;
-  splinterdb               *spl;
-  splinterdb_lookup_result  lookup_result;
+
+  void InitializeOptions(utils::Properties &props);
+
+  rocksdb::DB *db;
+  rocksdb::Options options;
+  rocksdb::ReadOptions roptions;
+  rocksdb::WriteOptions woptions;
 };
 
 } // ycsbc
 
-#endif // YCSB_C_SPLINTER_DB_H_
-
+#endif // YCSB_C_ROCKS_DB_H_

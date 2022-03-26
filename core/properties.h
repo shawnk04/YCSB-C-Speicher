@@ -19,9 +19,13 @@ namespace utils {
 
 class Properties {
  public:
-  std::string GetProperty(const std::string &key,
+  const std::string &GetProperty(const std::string &key,
       const std::string &default_value = std::string()) const;
   const std::string &operator[](const std::string &key) const;
+
+  long int GetIntProperty(const std::string &key) const;
+  //int operator[](const std::string &key) const;
+
   const std::map<std::string, std::string> &properties() const;
 
   void SetProperty(const std::string &key, const std::string &value);
@@ -30,7 +34,7 @@ class Properties {
   std::map<std::string, std::string> properties_;
 };
 
-inline std::string Properties::GetProperty(const std::string &key,
+inline const std::string &Properties::GetProperty(const std::string &key,
     const std::string &default_value) const {
   std::map<std::string, std::string>::const_iterator it = properties_.find(key);
   if (properties_.end() == it) {
@@ -41,6 +45,15 @@ inline std::string Properties::GetProperty(const std::string &key,
 inline const std::string &Properties::operator[](const std::string &key) const {
   return properties_.at(key);
 }
+
+inline long int Properties::GetIntProperty(const std::string &key) const {
+  std::string s = GetProperty(key);
+  return stol(s);
+}
+
+// inline int Properties::operator[](const std::string &key) const {
+//   return GetProperty(key);
+// }
 
 inline const std::map<std::string, std::string> &Properties::properties() const {
   return properties_;

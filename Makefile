@@ -1,9 +1,10 @@
 CC=g++
 CFLAGS=-std=c++17 -O3 -g -Wall -pthread -I./
-LDFLAGS= -lpthread -ltbb -lhiredis
+LDFLAGS= -lpthread -ltbb -lhiredis -lsplinterdb -lrocksdb
 SUBDIRS=core db
-SUBSRCS=$(wildcard core/*.cc) $(wildcard db/*.cc)
-OBJECTS=$(SUBSRCS:.cc=.o)
+SUBCPPSRCS=$(wildcard core/*.cc) $(wildcard db/*.cc)
+SUBCSRCS=$(wildcard core/*.c) $(wildcard db/*.c)
+OBJECTS=$(SUBCPPSRCS:.cc=.o) $(SUBCSRCS:.c=.o)
 EXEC=ycsbc
 
 all: $(SUBDIRS) $(EXEC)

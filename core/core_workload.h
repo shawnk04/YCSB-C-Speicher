@@ -144,7 +144,8 @@ class CoreWorkload {
   /// Initialize the scenario.
   /// Called once, in the main client thread, before any operations are started.
   ///
-  virtual void Init(const utils::Properties &p);
+  virtual void InitLoadWorkload(const utils::Properties &p, bool preloaded);
+  virtual void InitRunWorkload(const utils::Properties &p);
 
   void InitKeyBuffer(std::string &buffer);
 

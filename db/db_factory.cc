@@ -14,23 +14,33 @@
 #include "db/redis_db.h"
 #include "db/tbb_rand_db.h"
 #include "db/tbb_scan_db.h"
+#include "db/splinter_db.h"
+#include "db/rocks_db.h"
 
 using namespace std;
 using ycsbc::DB;
 using ycsbc::DBFactory;
 
-DB* DBFactory::CreateDB(utils::Properties &props) {
+DB* DBFactory::CreateDB(utils::Properties &props, bool preloaded) {
   if (props["dbname"] == "basic") {
+    assert(!preloaded);
     return new BasicDB;
   } else if (props["dbname"] == "lock_stl") {
+    assert(!preloaded);
     return new LockStlDB;
   } else if (props["dbname"] == "redis") {
     int port = stoi(props["port"]);
     int slaves = stoi(props["slaves"]);
     return new RedisDB(props["host"].c_str(), port, slaves);
+  } else if (props["dbname"] == "rocksdb") {
+    return new RocksDB(props, preloaded);
+  } else if (props["dbname"] == "splinterdb") {
+    return new SplinterDB(props, preloaded);
   } else if (props["dbname"] == "tbb_rand") {
+    assert(!preloaded);
     return new TbbRandDB;
   } else if (props["dbname"] == "tbb_scan") {
+    assert(!preloaded);
     return new TbbScanDB;
   } else return NULL;
 }
