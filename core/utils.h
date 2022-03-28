@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <exception>
-#include <random>
 
 namespace utils {
 
@@ -33,19 +32,6 @@ inline uint64_t FNVHash64(uint64_t val) {
 }
 
 inline uint64_t Hash(uint64_t val) { return FNVHash64(val); }
-
-inline double RandomDouble(double min = 0.0, double max = 1.0) {
-  static std::default_random_engine generator;
-  static std::uniform_real_distribution<double> uniform(min, max);
-  return uniform(generator);
-}
-
-///
-/// Returns an ASCII code that can be printed to desplay
-///
-inline char RandomPrintChar() {
-  return rand() % 94 + 33;
-}
 
 class Exception : public std::exception {
  public:

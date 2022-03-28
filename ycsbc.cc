@@ -30,15 +30,16 @@ void UsageMessage(const char *command);
 bool StrStartWith(const char *str, const char *pre);
 void ParseCommandLine(int argc, const char *argv[], utils::Properties &props, WorkloadProperties &load_workload, vector<WorkloadProperties> &run_workloads);
 
-int DelegateClient(ycsbc::DB *db, ycsbc::CoreWorkload *wl, const int num_ops,
-    bool is_loading) {
+int DelegateClient(ycsbc::DB *db, ycsbc::CoreWorkload *wl, const int num_ops, bool is_loading) {
   db->Init();
   ycsbc::Client client(*db, *wl);
   int oks = 0;
-  for (int i = 0; i < num_ops; ++i) {
-    if (is_loading) {
+  if (is_loading) {
+    for (int i = 0; i < num_ops; ++i) {
       oks += client.DoInsert();
-    } else {
+    }
+  } else {
+    for (int i = 0; i < num_ops; ++i) {
       oks += client.DoTransaction();
     }
   }
@@ -49,6 +50,11 @@ int DelegateClient(ycsbc::DB *db, ycsbc::CoreWorkload *wl, const int num_ops,
 std::map<string, string> default_props = {
   {"threadcount", "1"},
   {"dbname", "basic"},
+
+  //
+  // Basicdb config defaults
+  //
+  {"basicdb.verbose", "0"},
 
   //
   // splinterdb config defaults
@@ -86,8 +92,9 @@ int main(const int argc, const char *argv[]) {
   vector<WorkloadProperties> run_workloads;
   ParseCommandLine(argc, argv, props, load_workload, run_workloads);
 
-  const int num_threads = stoi(props.GetProperty("threadcount", "1"));
+  const unsigned int num_threads = stoi(props.GetProperty("threadcount", "1"));
   vector<future<int>> actual_ops;
+  int record_count;
   int total_ops;
   int sum;
   utils::Timer<double> timer;
@@ -98,58 +105,73 @@ int main(const int argc, const char *argv[]) {
     exit(0);
   }
 
-  ycsbc::CoreWorkload wl;
+  record_count = stoi(load_workload.props[ycsbc::CoreWorkload::RECORD_COUNT_PROPERTY]);
+  uint64_t batch_size = sqrt(record_count);
+  if (record_count / batch_size < num_threads)
+    batch_size = record_count / num_threads;
+  if (batch_size < 1)
+    batch_size = 1;
+
+  ycsbc::BatchedCounterGenerator key_generator(load_workload.preloaded ? record_count : 0, batch_size);
+  ycsbc::CoreWorkload wls[num_threads];
+  for (unsigned int i = 0; i < num_threads; ++i) {
+    wls[i].InitLoadWorkload(load_workload.props, num_threads, i, &key_generator);
+  }
 
   // Perform the Load phase
-  wl.InitLoadWorkload(load_workload.props, load_workload.preloaded);
   if (!load_workload.preloaded) {
-    total_ops = stoi(load_workload.props[ycsbc::CoreWorkload::RECORD_COUNT_PROPERTY]);
-    if (total_ops) {
-      timer.Start();
-      for (int i = 0; i < num_threads; ++i) {
-        actual_ops.emplace_back(async(launch::async,
-                                      DelegateClient, db, &wl, total_ops / num_threads, true));
+    timer.Start();
+    {
+      for (unsigned int i = 0; i < num_threads; ++i) {
+        uint64_t start_op = (record_count * i) / num_threads;
+        uint64_t end_op = (record_count * (i + 1)) / num_threads;
+        actual_ops.emplace_back(async(launch::async, DelegateClient, db, &wls[i], end_op - start_op, true));
       }
-      assert((int)actual_ops.size() == num_threads);
-
+      assert(actual_ops.size() == num_threads);
       sum = 0;
       for (auto &n : actual_ops) {
         assert(n.valid());
         sum += n.get();
       }
-      double load_duration = timer.End();
-      cerr << "# Loading records:\t" << sum << endl;
-      cerr << "# Load throughput (KTPS)" << endl;
-      cerr << props["dbname"] << '\t' << load_workload.filename << '\t' << num_threads << '\t';
-      cerr << total_ops / load_duration / 1000 << endl;
     }
+    double load_duration = timer.End();
+
+    cerr << "# Loading records:\t" << sum << endl;
+    cerr << "# Load throughput (KTPS)" << endl;
+    cerr << props["dbname"] << '\t' << load_workload.filename << '\t' << num_threads << '\t';
+    cerr << sum / load_duration / 1000 << endl;
   }
+
 
   // Perform any Run phases
   for (unsigned int i = 0; i < run_workloads.size(); i++) {
     auto workload = run_workloads[i];
-    wl.InitRunWorkload(workload.props);
+    for (unsigned int i = 0; i < num_threads; ++i) {
+      wls[i].InitRunWorkload(workload.props, num_threads, i);
+    }
     actual_ops.clear();
     total_ops = stoi(workload.props[ycsbc::CoreWorkload::OPERATION_COUNT_PROPERTY]);
-    if (total_ops) {
-      timer.Start();
-      for (int i = 0; i < num_threads; ++i) {
+    timer.Start();
+    {
+      for (unsigned int i = 0; i < num_threads; ++i) {
+        uint64_t start_op = (total_ops * i) / num_threads;
+        uint64_t end_op = (total_ops * (i + 1)) / num_threads;
         actual_ops.emplace_back(async(launch::async,
-                                      DelegateClient, db, &wl, total_ops / num_threads, false));
+                                      DelegateClient, db, &wls[i], end_op - start_op, false));
       }
-      assert((int)actual_ops.size() == num_threads);
-
+      assert(actual_ops.size() == num_threads);
       sum = 0;
       for (auto &n : actual_ops) {
         assert(n.valid());
         sum += n.get();
       }
-      double run_duration = timer.End();
-      cerr << "# Transaction count:\t" << sum << endl;
-      cerr << "# Transaction throughput (KTPS)" << endl;
-      cerr << props["dbname"] << '\t' << workload.filename << '\t' << num_threads << '\t';
-      cerr << total_ops / run_duration / 1000 << endl;
     }
+    double run_duration = timer.End();
+
+    cerr << "# Transaction count:\t" << sum << endl;
+    cerr << "# Transaction throughput (KTPS)" << endl;
+    cerr << props["dbname"] << '\t' << workload.filename << '\t' << num_threads << '\t';
+    cerr << sum / run_duration / 1000 << endl;
   }
 
   delete db;

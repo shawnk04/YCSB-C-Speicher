@@ -76,7 +76,7 @@ const string CoreWorkload::INSERT_START_DEFAULT = "0";
 const string CoreWorkload::RECORD_COUNT_PROPERTY = "recordcount";
 const string CoreWorkload::OPERATION_COUNT_PROPERTY = "operationcount";
 
-void CoreWorkload::InitLoadWorkload(const utils::Properties &p, bool preloaded) {
+void CoreWorkload::InitLoadWorkload(const utils::Properties &p, unsigned int nthreads, unsigned int this_thread, BatchedCounterGenerator *key_generator) {
   table_name_ = p.GetProperty(TABLENAME_PROPERTY,TABLENAME_DEFAULT);
   
   field_count_ = std::stoi(p.GetProperty(FIELD_COUNT_PROPERTY,
@@ -87,26 +87,25 @@ void CoreWorkload::InitLoadWorkload(const utils::Properties &p, bool preloaded) 
 
   zero_padding_ = std::stoi(p.GetProperty(ZERO_PADDING_PROPERTY, ZERO_PADDING_DEFAULT));
 
-  int insert_start = std::stoi(p.GetProperty(INSERT_START_PROPERTY,
-                                             INSERT_START_DEFAULT));
-
-  if (preloaded) {
-    insert_start = record_count_;
-  }
-
   if (p.GetProperty(INSERT_ORDER_PROPERTY, INSERT_ORDER_DEFAULT) == "hashed") {
     ordered_inserts_ = false;
   } else {
     ordered_inserts_ = true;
   }
 
-  key_generator_ = new CounterGenerator(insert_start);
+  generator_.seed(this_thread * 3423452437 + 8349344563457);
 
   insert_key_sequence_.Set(record_count_);
+
+  key_generator_ = key_generator;
+  key_batch_start_ = key_generator_->Next();
+  key_generator_batch_.Set(key_batch_start_);
+  batch_remaining_ = key_generator_->BatchSize();
 }
 
 
-void CoreWorkload::InitRunWorkload(const utils::Properties &p) {
+void CoreWorkload::InitRunWorkload(const utils::Properties &p, unsigned int nthreads, unsigned int this_thread) {
+  generator_.seed(this_thread * 3423452437 + 8349344563457);
 
   double read_proportion = std::stod(p.GetProperty(READ_PROPORTION_PROPERTY,
                                                    READ_PROPORTION_DEFAULT));
@@ -148,7 +147,7 @@ void CoreWorkload::InitRunWorkload(const utils::Properties &p) {
   }
   
   if (request_dist == "uniform") {
-    key_chooser_ = new UniformGenerator(0, record_count_ - 1);
+    key_chooser_ = new UniformGenerator(generator_, 0, record_count_ - 1);
     
   } else if (request_dist == "zipfian") {
     // If the number of keys changes, we don't want to change popular keys.
@@ -158,25 +157,27 @@ void CoreWorkload::InitRunWorkload(const utils::Properties &p) {
     // and pick another key.
     int op_count = std::stoi(p.GetProperty(OPERATION_COUNT_PROPERTY));
     int new_keys = (int)(op_count * insert_proportion * 2); // a fudge factor
-    key_chooser_ = new ScrambledZipfianGenerator(record_count_ + new_keys);
+    key_chooser_ = new ScrambledZipfianGenerator(generator_, record_count_ + new_keys);
     
   } else if (request_dist == "latest") {
-    key_chooser_ = new SkewedLatestGenerator(insert_key_sequence_);
+    key_chooser_ = new SkewedLatestGenerator(generator_, *key_generator_);
     
   } else {
     throw utils::Exception("Unknown request distribution: " + request_dist);
   }
   
-  field_chooser_ = new UniformGenerator(0, field_count_ - 1);
+  field_chooser_ = new UniformGenerator(generator_, 0, field_count_ - 1);
   
   if (scan_len_dist == "uniform") {
-    scan_len_chooser_ = new UniformGenerator(1, max_scan_len);
+    scan_len_chooser_ = new UniformGenerator(generator_, 1, max_scan_len);
   } else if (scan_len_dist == "zipfian") {
-    scan_len_chooser_ = new ZipfianGenerator(1, max_scan_len);
+    scan_len_chooser_ = new ZipfianGenerator(generator_, 1, max_scan_len);
   } else {
     throw utils::Exception("Distribution not allowed for scan length: " +
         scan_len_dist);
   }
+
+  //batch_size_ = 1;
 }
 
 ycsbc::Generator<uint64_t> *CoreWorkload::GetFieldLenGenerator(
@@ -188,9 +189,9 @@ ycsbc::Generator<uint64_t> *CoreWorkload::GetFieldLenGenerator(
   if(field_len_dist == "constant") {
     return new ConstGenerator(field_len);
   } else if(field_len_dist == "uniform") {
-    return new UniformGenerator(1, field_len);
+    return new UniformGenerator(generator_, 1, field_len);
   } else if(field_len_dist == "zipfian") {
-    return new ZipfianGenerator(1, field_len);
+    return new ZipfianGenerator(generator_, 1, field_len);
   } else {
     throw utils::Exception("Unknown field length distribution: " +
         field_len_dist);
@@ -202,7 +203,7 @@ void CoreWorkload::BuildValues(std::vector<ycsbc::DB::KVPair> &values) {
   for (int i = 0; i < field_count_; ++i) {
     ycsbc::DB::KVPair pair;
     pair.first.append("field").append(std::to_string(i));
-    pair.second.append(field_len_generator_->Next(), utils::RandomPrintChar());
+    pair.second.append(field_len_generator_->Next(), uniform_letter_dist_(generator_));
     values.push_back(pair);
   }
 }
@@ -219,14 +220,14 @@ void CoreWorkload::InitPairs(std::vector<ycsbc::DB::KVPair> &values) {
 void CoreWorkload::UpdateValues(std::vector<ycsbc::DB::KVPair> &values) {
   assert(values.size() == (unsigned int)field_count_);
   for (int i = 0; i < field_count_; ++i) {
-    values[i].second[0] = utils::RandomPrintChar();
+    values[i].second[0] = uniform_letter_dist_(generator_);
   }
 }
 
 void CoreWorkload::BuildUpdate(std::vector<ycsbc::DB::KVPair> &update) {
   ycsbc::DB::KVPair pair;
   pair.first.append(NextFieldName());
-  pair.second.append(field_len_generator_->Next(), utils::RandomPrintChar());
+  pair.second.append(field_len_generator_->Next(), uniform_letter_dist_(generator_));
   update.push_back(pair);
 }
 

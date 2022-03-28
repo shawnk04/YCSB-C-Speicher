@@ -23,24 +23,32 @@ namespace ycsbc {
 
 class BasicDB : public DB {
  public:
+  BasicDB(utils::Properties &props) {
+    verbose = props.GetIntProperty("basicdb.verbose");
+  }
+
   void Init() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    cout << "A new thread begins working." << endl;
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      cout << "A new thread begins working." << endl;
+    }
   }
 
   int Read(const std::string &table, const std::string &key,
            const std::vector<std::string> *fields,
            std::vector<KVPair> &result) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    cout << "READ " << table << ' ' << key;
-    if (fields) {
-      cout << " [ ";
-      for (auto f : *fields) {
-        cout << f << ' ';
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      cout << "READ " << table << ' ' << key;
+      if (fields) {
+        cout << " [ ";
+        for (auto f : *fields) {
+          cout << f << ' ';
+        }
+        cout << ']' << endl;
+      } else {
+        cout  << " < all fields >" << endl;
       }
-      cout << ']' << endl;
-    } else {
-      cout  << " < all fields >" << endl;
     }
     return 0;
   }
@@ -48,49 +56,58 @@ class BasicDB : public DB {
   int Scan(const std::string &table, const std::string &key,
            int len, const std::vector<std::string> *fields,
            std::vector<std::vector<KVPair>> &result) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    cout << "SCAN " << table << ' ' << key << " " << len;
-    if (fields) {
-      cout << " [ ";
-      for (auto f : *fields) {
-        cout << f << ' ';
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      cout << "SCAN " << table << ' ' << key << " " << len;
+      if (fields) {
+        cout << " [ ";
+        for (auto f : *fields) {
+          cout << f << ' ';
+        }
+        cout << ']' << endl;
+      } else {
+        cout  << " < all fields >" << endl;
       }
-      cout << ']' << endl;
-    } else {
-      cout  << " < all fields >" << endl;
     }
     return 0;
   }
 
   int Update(const std::string &table, const std::string &key,
              std::vector<KVPair> &values) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    cout << "UPDATE " << table << ' ' << key << " [ ";
-    for (auto v : values) {
-      cout << v.first << '=' << v.second << ' ';
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      cout << "UPDATE " << table << ' ' << key << " [ ";
+      for (auto v : values) {
+        cout << v.first << '=' << v.second << ' ';
+      }
+      cout << ']' << endl;
     }
-    cout << ']' << endl;
     return 0;
   }
 
   int Insert(const std::string &table, const std::string &key,
              std::vector<KVPair> &values) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    cout << "INSERT " << table << ' ' << key << " [ ";
-    for (auto v : values) {
-      cout << v.first << '=' << v.second << ' ';
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      cout << "INSERT " << table << ' ' << key << " [ ";
+      for (auto v : values) {
+        cout << v.first << '=' << v.second << ' ';
+      }
+      cout << ']' << endl;
     }
-    cout << ']' << endl;
     return 0;
   }
 
   int Delete(const std::string &table, const std::string &key) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    cout << "DELETE " << table << ' ' << key << endl;
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      cout << "DELETE " << table << ' ' << key << endl;
+    }
     return 0; 
   }
 
  private:
+  bool verbose;
   std::mutex mutex_;
 };
 

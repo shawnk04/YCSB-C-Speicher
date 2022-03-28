@@ -16,6 +16,7 @@
 #include "generator.h"
 #include "discrete_generator.h"
 #include "counter_generator.h"
+#include "batched_counter_generator.h"
 #include "utils.h"
 
 namespace ycsbc {
@@ -144,8 +145,8 @@ class CoreWorkload {
   /// Initialize the scenario.
   /// Called once, in the main client thread, before any operations are started.
   ///
-  virtual void InitLoadWorkload(const utils::Properties &p, bool preloaded);
-  virtual void InitRunWorkload(const utils::Properties &p);
+  virtual void InitLoadWorkload(const utils::Properties &p, unsigned int nthreads, unsigned int this_thread, BatchedCounterGenerator *key_generator);
+  virtual void InitRunWorkload(const utils::Properties &p, unsigned int nthreads, unsigned int this_thread);
 
   void InitKeyBuffer(std::string &buffer);
 
@@ -165,31 +166,46 @@ class CoreWorkload {
   bool write_all_fields() const { return write_all_fields_; }
 
   CoreWorkload() :
-      field_count_(0), read_all_fields_(false), write_all_fields_(false),
-      field_len_generator_(NULL), key_generator_(NULL), key_chooser_(NULL),
-      field_chooser_(NULL), scan_len_chooser_(NULL), insert_key_sequence_(3),
-      ordered_inserts_(true), record_count_(0) {
-  }
+      generator_(),
+      field_count_(0),
+      read_all_fields_(false),
+      write_all_fields_(false),
+      field_len_generator_(NULL),
+      key_generator_(NULL),
+      key_generator_batch_(0),
+      batch_remaining_(0),
+      op_chooser_(generator_),
+      key_chooser_(NULL),
+      field_chooser_(NULL),
+      scan_len_chooser_(NULL),
+      insert_key_sequence_(3),
+      ordered_inserts_(true),
+      record_count_(0),
+      uniform_letter_dist_('a', 'z')
+  {}
   
   virtual ~CoreWorkload() {
     if (field_len_generator_) delete field_len_generator_;
-    if (key_generator_) delete key_generator_;
     if (key_chooser_) delete key_chooser_;
     if (field_chooser_) delete field_chooser_;
     if (scan_len_chooser_) delete scan_len_chooser_;
   }
   
  protected:
-  static Generator<uint64_t> *GetFieldLenGenerator(const utils::Properties &p);
+  Generator<uint64_t> *GetFieldLenGenerator(const utils::Properties &p);
   std::string BuildKeyName(uint64_t key_num);
   void UpdateKeyName(uint64_t key_num, std::string &buffer);
 
+  std::default_random_engine generator_;
   std::string table_name_;
   int field_count_;
   bool read_all_fields_;
   bool write_all_fields_;
   Generator<uint64_t> *field_len_generator_;
-  Generator<uint64_t> *key_generator_;
+  BatchedCounterGenerator *key_generator_;
+  uint64_t key_batch_start_;
+  CounterGenerator key_generator_batch_;
+  uint64_t batch_remaining_;
   DiscreteGenerator<Operation> op_chooser_;
   Generator<uint64_t> *key_chooser_;
   Generator<uint64_t> *field_chooser_;
@@ -198,6 +214,8 @@ class CoreWorkload {
   bool ordered_inserts_;
   size_t record_count_;
   int zero_padding_;
+
+  std::uniform_int_distribution<char> uniform_letter_dist_;
 };
 
 inline void CoreWorkload::InitKeyBuffer(std::string &buffer) {
@@ -205,7 +223,14 @@ inline void CoreWorkload::InitKeyBuffer(std::string &buffer) {
 }
 
 inline void CoreWorkload::NextSequenceKey(std::string &buffer) {
-  uint64_t key_num = key_generator_->Next();
+  if (batch_remaining_ == 0) {
+    key_generator_->MarkCompleted(key_batch_start_);
+    key_batch_start_ = key_generator_->Next();
+    key_generator_batch_.Set(key_batch_start_);
+    batch_remaining_ = key_generator_->BatchSize();
+  }
+  uint64_t key_num = key_generator_batch_.Next();
+  batch_remaining_--;
   //buffer = BuildKeyName(key_num);
   UpdateKeyName(key_num, buffer);
 }
@@ -214,7 +239,7 @@ inline std::string CoreWorkload::NextTransactionKey() {
   uint64_t key_num;
   do {
     key_num = key_chooser_->Next();
-  } while (key_num > insert_key_sequence_.Last());
+  } while (key_num > key_generator_->Last());
   return BuildKeyName(key_num);
 }
 

@@ -12,7 +12,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <mutex>
 #include "utils.h"
 
 namespace ycsbc {
@@ -22,10 +21,16 @@ class ZipfianGenerator : public Generator<uint64_t> {
   constexpr static const double kZipfianConst = 0.99;
   static const uint64_t kMaxNumItems = (UINT64_MAX >> 24);
   
-  ZipfianGenerator(uint64_t min, uint64_t max,
+  ZipfianGenerator(std::default_random_engine &generator,
+                   uint64_t min, uint64_t max,
                    double zipfian_const = kZipfianConst) :
-      num_items_(max - min + 1), base_(min), theta_(zipfian_const),
-      zeta_n_(0), n_for_zeta_(0) {
+    generator_(generator),
+    dist_(0.0, 1.0),
+    num_items_(max - min + 1),
+    base_(min), theta_(zipfian_const),
+    zeta_n_(0),
+    n_for_zeta_(0)
+  {
     assert(num_items_ >= 2 && num_items_ < kMaxNumItems);
     zeta_2_ = Zeta(2, theta_);
     alpha_ = 1.0 / (1.0 - theta_);
@@ -35,8 +40,8 @@ class ZipfianGenerator : public Generator<uint64_t> {
     Next();
   }
   
-  ZipfianGenerator(uint64_t num_items) :
-      ZipfianGenerator(0, num_items - 1, kZipfianConst) { }
+  ZipfianGenerator(std::default_random_engine &generator, uint64_t num_items) :
+    ZipfianGenerator(generator, 0, num_items - 1, kZipfianConst) { }
   
   uint64_t Next(uint64_t num_items);
   
@@ -78,7 +83,10 @@ class ZipfianGenerator : public Generator<uint64_t> {
   static double Zeta(uint64_t num, double theta) {
     return Zeta(0, num, theta, 0);
   }
-  
+
+  std::default_random_engine &generator_;
+  std::uniform_real_distribution<float> dist_;
+
   uint64_t num_items_;
   uint64_t base_; /// Min number of items to generate
   
@@ -86,19 +94,17 @@ class ZipfianGenerator : public Generator<uint64_t> {
   double theta_, zeta_n_, eta_, alpha_, zeta_2_;
   uint64_t n_for_zeta_; /// Number of items used to compute zeta_n
   uint64_t last_value_;
-  std::mutex mutex_;
 };
 
 inline uint64_t ZipfianGenerator::Next(uint64_t num) {
   assert(num >= 2 && num < kMaxNumItems);
-  std::lock_guard<std::mutex> lock(mutex_);
 
   if (num > n_for_zeta_) { // Recompute zeta_n and eta
     RaiseZeta(num);
     eta_ = Eta();
   }
   
-  double u = utils::RandomDouble();
+  double u = dist_(generator_);
   double uz = u * zeta_n_;
   
   if (uz < 1.0) {
@@ -113,7 +119,6 @@ inline uint64_t ZipfianGenerator::Next(uint64_t num) {
 }
 
 inline uint64_t ZipfianGenerator::Last() {
-  std::lock_guard<std::mutex> lock(mutex_);
   return last_value_;
 }
 

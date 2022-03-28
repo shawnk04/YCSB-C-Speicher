@@ -11,7 +11,6 @@
 
 #include "generator.h"
 
-#include <atomic>
 #include <cstdint>
 #include "utils.h"
 #include "zipfian_generator.h"
@@ -20,13 +19,14 @@ namespace ycsbc {
 
 class ScrambledZipfianGenerator : public Generator<uint64_t> {
  public:
-  ScrambledZipfianGenerator(uint64_t min, uint64_t max,
+  ScrambledZipfianGenerator(std::default_random_engine &generator,
+                            uint64_t min, uint64_t max,
       double zipfian_const = ZipfianGenerator::kZipfianConst) :
       base_(min), num_items_(max - min + 1),
-      generator_(min, max, zipfian_const) { }
+      generator_(generator, min, max, zipfian_const) { }
   
-  ScrambledZipfianGenerator(uint64_t num_items) :
-      ScrambledZipfianGenerator(0, num_items - 1) { }
+  ScrambledZipfianGenerator(std::default_random_engine &generator, uint64_t num_items) :
+    ScrambledZipfianGenerator(generator, 0, num_items - 1) { }
   
   uint64_t Next();
   uint64_t Last();

@@ -11,7 +11,6 @@
 
 #include "generator.h"
 
-#include <atomic>
 #include <cstdint>
 #include "counter_generator.h"
 #include "zipfian_generator.h"
@@ -20,17 +19,17 @@ namespace ycsbc {
 
 class SkewedLatestGenerator : public Generator<uint64_t> {
  public:
-  SkewedLatestGenerator(CounterGenerator &counter) :
-      basis_(counter), zipfian_(basis_.Last()) {
+  SkewedLatestGenerator(std::default_random_engine &generator, Generator &counter) :
+    basis_(counter), zipfian_(generator, basis_.Last()) {
     Next();
   }
   
   uint64_t Next();
   uint64_t Last() { return last_; }
  private:
-  CounterGenerator &basis_;
+  Generator &basis_;
   ZipfianGenerator zipfian_;
-  std::atomic<uint64_t> last_;
+  uint64_t last_;
 };
 
 inline uint64_t SkewedLatestGenerator::Next() {

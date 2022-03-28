@@ -11,8 +11,6 @@
 
 #include "generator.h"
 
-#include <atomic>
-#include <mutex>
 #include <random>
 
 namespace ycsbc {
@@ -20,25 +18,27 @@ namespace ycsbc {
 class UniformGenerator : public Generator<uint64_t> {
  public:
   // Both min and max are inclusive
-  UniformGenerator(uint64_t min, uint64_t max) : dist_(min, max) { Next(); }
+  UniformGenerator(std::default_random_engine &generator, uint64_t min, uint64_t max) :
+    generator_(generator),
+    dist_(min, max)
+  {
+    Next();
+  }
   
   uint64_t Next();
   uint64_t Last();
   
  private:
-  std::mt19937_64 generator_;
+  std::default_random_engine &generator_;
   std::uniform_int_distribution<uint64_t> dist_;
   uint64_t last_int_;
-  std::mutex mutex_;
 };
 
 inline uint64_t UniformGenerator::Next() {
-  std::lock_guard<std::mutex> lock(mutex_);
   return last_int_ = dist_(generator_);
 }
 
 inline uint64_t UniformGenerator::Last() {
-  std::lock_guard<std::mutex> lock(mutex_);
   return last_int_;
 }
 

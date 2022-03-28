@@ -23,8 +23,7 @@ using ycsbc::DBFactory;
 
 DB* DBFactory::CreateDB(utils::Properties &props, bool preloaded) {
   if (props["dbname"] == "basic") {
-    assert(!preloaded);
-    return new BasicDB;
+    return new BasicDB(props);
   } else if (props["dbname"] == "lock_stl") {
     assert(!preloaded);
     return new LockStlDB;
