@@ -49,7 +49,6 @@ private:
   splinterdb_config         splinterdb_cfg;
   data_config               data_cfg;
   splinterdb               *spl;
-  splinterdb_lookup_result  lookup_result;
 };
 
 } // ycsbc

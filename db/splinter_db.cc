@@ -51,13 +51,11 @@ SplinterDB::SplinterDB(utils::Properties &props, bool preloaded) {
   } else {
     assert(!splinterdb_create(&splinterdb_cfg, &spl));
   }
-  splinterdb_lookup_result_init(spl, &lookup_result, 0, NULL);
 }
 
 SplinterDB::~SplinterDB()
 {
-  splinterdb_lookup_result_deinit(&lookup_result);
-  splinterdb_close(spl);
+  splinterdb_close(&spl);
 }
 
 void SplinterDB::Init()
@@ -74,8 +72,17 @@ int SplinterDB::Read(const string &table,
                      const string &key,
                      const vector<string> *fields,
                      vector<KVPair> &result) {
+  splinterdb_lookup_result  lookup_result;
+  splinterdb_lookup_result_init(spl, &lookup_result, 0, NULL);
   slice key_slice = slice_create(key.size(), key.c_str());
+  //cout << "lookup " << key << endl;
   assert(!splinterdb_lookup(spl, key_slice, &lookup_result));
+  if (!splinterdb_lookup_found(&lookup_result)) {
+    cout << "FAILED lookup " << key << endl;
+    assert(0);
+  }
+  //cout << "done lookup " << key << endl;
+  splinterdb_lookup_result_deinit(&lookup_result);
   return DB::kOK;
 }
 
@@ -115,7 +122,9 @@ int SplinterDB::Insert(const string &table, const string &key, vector<KVPair> &v
   std::string val = values[0].second;
   slice key_slice = slice_create(key.size(), key.c_str());
   slice val_slice = slice_create(val.size(), val.c_str());
+  //cout << "insert " << key << endl;
   assert(!splinterdb_insert(spl, key_slice, val_slice));
+  //cout << "done insert " << key << endl;
 
   return DB::kOK;
 }
