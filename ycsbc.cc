@@ -25,31 +25,10 @@ typedef struct WorkloadProperties {
   utils::Properties props;
 } WorkloadProperties;
 
-
-void UsageMessage(const char *command);
-bool StrStartWith(const char *str, const char *pre);
-void ParseCommandLine(int argc, const char *argv[], utils::Properties &props, WorkloadProperties &load_workload, vector<WorkloadProperties> &run_workloads);
-
-int DelegateClient(ycsbc::DB *db, ycsbc::CoreWorkload *wl, const int num_ops, bool is_loading) {
-  db->Init();
-  ycsbc::Client client(*db, *wl);
-  int oks = 0;
-  if (is_loading) {
-    for (int i = 0; i < num_ops; ++i) {
-      oks += client.DoInsert();
-    }
-  } else {
-    for (int i = 0; i < num_ops; ++i) {
-      oks += client.DoTransaction();
-    }
-  }
-  db->Close();
-  return oks;
-}
-
 std::map<string, string> default_props = {
   {"threadcount", "1"},
   {"dbname", "basic"},
+  {"progress", "none"},
 
   //
   // Basicdb config defaults
@@ -86,6 +65,69 @@ std::map<string, string> default_props = {
   {"rocksdb.database_filename", "rocksdb.db"},
 };
 
+
+void UsageMessage(const char *command);
+bool StrStartWith(const char *str, const char *pre);
+void ParseCommandLine(int argc, const char *argv[], utils::Properties &props, WorkloadProperties &load_workload, vector<WorkloadProperties> &run_workloads);
+
+typedef enum progress_mode {
+  no_progress,
+  hash_progress,
+  percent_progress,
+} progress_mode;
+
+static inline void ReportProgress(progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, uint64_t stepsize, volatile uint64_t *last_printed)
+{
+  uint64_t old_counter = __sync_fetch_and_add(global_op_counter, stepsize);
+  uint64_t new_counter = old_counter + stepsize;
+  if (100 * old_counter / total_ops != 100 * new_counter / total_ops) {
+    if (pmode == hash_progress) {
+      cout << "#" << flush;
+    } else if (pmode == percent_progress) {
+      uint64_t my_percent = 100 * new_counter / total_ops;
+      while (*last_printed + 1 != my_percent) {}
+      cout << 100 * new_counter / total_ops << "%\r" << flush;
+      *last_printed = my_percent;
+    }
+  }
+}
+
+static inline void ProgressUpdate(progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, uint64_t i, volatile uint64_t *last_printed)
+{
+  uint64_t sync_interval = 0 < total_ops / 1000 ? total_ops / 1000 : 1;
+  if ((i % sync_interval) == 0) {
+    ReportProgress(pmode, total_ops, global_op_counter, sync_interval, last_printed);
+  }
+}
+
+static inline void ProgressFinish(progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, uint64_t i, volatile uint64_t *last_printed)
+{
+  uint64_t sync_interval = 0 < total_ops / 1000 ? total_ops / 1000 : 1;
+  ReportProgress(pmode, total_ops, global_op_counter, i % sync_interval, last_printed);
+}
+
+int DelegateClient(ycsbc::DB *db, ycsbc::CoreWorkload *wl, const uint64_t num_ops, bool is_loading,
+                   progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, volatile uint64_t *last_printed) {
+  db->Init();
+  ycsbc::Client client(*db, *wl);
+  uint64_t oks = 0;
+
+  if (is_loading) {
+    for (uint64_t i = 0; i < num_ops; ++i) {
+      oks += client.DoInsert();
+      ProgressUpdate(pmode, total_ops, global_op_counter, i, last_printed);
+    }
+  } else {
+    for (uint64_t i = 0; i < num_ops; ++i) {
+      oks += client.DoTransaction();
+      ProgressUpdate(pmode, total_ops, global_op_counter, i, last_printed);
+    }
+  }
+  ProgressFinish(pmode, total_ops, global_op_counter, num_ops, last_printed);
+  db->Close();
+  return oks;
+}
+
 int main(const int argc, const char *argv[]) {
   utils::Properties props;
   WorkloadProperties load_workload;
@@ -93,10 +135,16 @@ int main(const int argc, const char *argv[]) {
   ParseCommandLine(argc, argv, props, load_workload, run_workloads);
 
   const unsigned int num_threads = stoi(props.GetProperty("threadcount", "1"));
+  progress_mode pmode = no_progress;
+  if (props.GetProperty("progress", "none") == "hash") {
+    pmode = hash_progress;
+  } else if (props.GetProperty("progress", "none") == "percent") {
+    pmode = percent_progress;
+  }
   vector<future<int>> actual_ops;
-  int record_count;
-  int total_ops;
-  int sum;
+  uint64_t record_count;
+  uint64_t total_ops;
+  uint64_t sum;
   utils::Timer<double> timer;
 
   ycsbc::DB *db = ycsbc::DBFactory::CreateDB(props, load_workload.preloaded);
@@ -122,10 +170,13 @@ int main(const int argc, const char *argv[]) {
   if (!load_workload.preloaded) {
     timer.Start();
     {
+      cerr << "# Loading records:\t" << record_count << endl;
+      uint64_t load_progress = 0;
+      uint64_t last_printed = 0;
       for (unsigned int i = 0; i < num_threads; ++i) {
         uint64_t start_op = (record_count * i) / num_threads;
         uint64_t end_op = (record_count * (i + 1)) / num_threads;
-        actual_ops.emplace_back(async(launch::async, DelegateClient, db, &wls[i], end_op - start_op, true));
+        actual_ops.emplace_back(async(launch::async, DelegateClient, db, &wls[i], end_op - start_op, true, pmode, record_count, &load_progress, &last_printed));
       }
       assert(actual_ops.size() == num_threads);
       sum = 0;
@@ -133,10 +184,11 @@ int main(const int argc, const char *argv[]) {
         assert(n.valid());
         sum += n.get();
       }
+      if (pmode != no_progress) {
+        cout << "\n";
+      }
     }
     double load_duration = timer.End();
-
-    cerr << "# Loading records:\t" << sum << endl;
     cerr << "# Load throughput (KTPS)" << endl;
     cerr << props["dbname"] << '\t' << load_workload.filename << '\t' << num_threads << '\t';
     cerr << sum / load_duration / 1000 << endl;
@@ -153,11 +205,14 @@ int main(const int argc, const char *argv[]) {
     total_ops = stoi(workload.props[ycsbc::CoreWorkload::OPERATION_COUNT_PROPERTY]);
     timer.Start();
     {
+      cerr << "# Transaction count:\t" << total_ops << endl;
+      uint64_t run_progress = 0;
+      uint64_t last_printed = 0;
       for (unsigned int i = 0; i < num_threads; ++i) {
         uint64_t start_op = (total_ops * i) / num_threads;
         uint64_t end_op = (total_ops * (i + 1)) / num_threads;
         actual_ops.emplace_back(async(launch::async,
-                                      DelegateClient, db, &wls[i], end_op - start_op, false));
+                                      DelegateClient, db, &wls[i], end_op - start_op, false, pmode, total_ops, &run_progress, &last_printed));
       }
       assert(actual_ops.size() == num_threads);
       sum = 0;
@@ -165,10 +220,12 @@ int main(const int argc, const char *argv[]) {
         assert(n.valid());
         sum += n.get();
       }
+      if (pmode != no_progress) {
+        cout << "\n";
+      }
     }
     double run_duration = timer.End();
 
-    cerr << "# Transaction count:\t" << sum << endl;
     cerr << "# Transaction throughput (KTPS)" << endl;
     cerr << props["dbname"] << '\t' << workload.filename << '\t' << num_threads << '\t';
     cerr << sum / run_duration / 1000 << endl;
@@ -202,6 +259,14 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props, Wo
         exit(0);
       }
       props.SetProperty("dbname", argv[argindex]);
+      argindex++;
+    } else if (strcmp(argv[argindex], "-progress") == 0) {
+      argindex++;
+      if (argindex >= argc) {
+        UsageMessage(argv[0]);
+        exit(0);
+      }
+      props.SetProperty("progress", argv[argindex]);
       argindex++;
     } else if (strcmp(argv[argindex], "-host") == 0) {
       argindex++;
