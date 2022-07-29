@@ -21,7 +21,7 @@ to include the hiredis library by:
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
 ```
 
-Run Workload A with a [TBB](https://www.threadingbuildingblocks.org)-based
+Run Workload A with a [SplinterDB](https://splinterdb.org)-based
 implementation of the database, for example:
 ```sh
 $ ./ycsbc -db splinterdb -threads 4 -L workloads/load.spec -W workloads/workloada.spec
