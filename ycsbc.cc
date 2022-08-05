@@ -68,7 +68,8 @@ std::map<string, string> default_props = {
 
 void UsageMessage(const char *command);
 bool StrStartWith(const char *str, const char *pre);
-void ParseCommandLine(int argc, const char *argv[], utils::Properties &props, WorkloadProperties &load_workload, vector<WorkloadProperties> &run_workloads);
+void ParseCommandLine(int argc, const char *argv[], utils::Properties &props,
+                      WorkloadProperties &load_workload, vector<WorkloadProperties> &run_workloads);
 
 typedef enum progress_mode {
   no_progress,
@@ -76,7 +77,11 @@ typedef enum progress_mode {
   percent_progress,
 } progress_mode;
 
-static inline void ReportProgress(progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, uint64_t stepsize, volatile uint64_t *last_printed)
+static inline void ReportProgress(progress_mode pmode,
+                                  uint64_t total_ops,
+                                  volatile uint64_t *global_op_counter,
+                                  uint64_t stepsize,
+                                  volatile uint64_t *last_printed)
 {
   uint64_t old_counter = __sync_fetch_and_add(global_op_counter, stepsize);
   uint64_t new_counter = old_counter + stepsize;
@@ -92,7 +97,11 @@ static inline void ReportProgress(progress_mode pmode, uint64_t total_ops, volat
   }
 }
 
-static inline void ProgressUpdate(progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, uint64_t i, volatile uint64_t *last_printed)
+static inline void ProgressUpdate(progress_mode pmode,
+                                  uint64_t total_ops,
+                                  volatile uint64_t *global_op_counter,
+                                  uint64_t i,
+                                  volatile uint64_t *last_printed)
 {
   uint64_t sync_interval = 0 < total_ops / 1000 ? total_ops / 1000 : 1;
   if ((i % sync_interval) == 0) {
@@ -100,14 +109,24 @@ static inline void ProgressUpdate(progress_mode pmode, uint64_t total_ops, volat
   }
 }
 
-static inline void ProgressFinish(progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, uint64_t i, volatile uint64_t *last_printed)
+static inline void ProgressFinish(progress_mode pmode,
+                                  uint64_t total_ops,
+                                  volatile uint64_t *global_op_counter,
+                                  uint64_t i,
+                                  volatile uint64_t *last_printed)
 {
   uint64_t sync_interval = 0 < total_ops / 1000 ? total_ops / 1000 : 1;
   ReportProgress(pmode, total_ops, global_op_counter, i % sync_interval, last_printed);
 }
 
-int DelegateClient(ycsbc::DB *db, ycsbc::CoreWorkload *wl, const uint64_t num_ops, bool is_loading,
-                   progress_mode pmode, uint64_t total_ops, volatile uint64_t *global_op_counter, volatile uint64_t *last_printed) {
+int DelegateClient(ycsbc::DB *db,
+                   ycsbc::CoreWorkload *wl,
+                   const uint64_t num_ops,
+                   bool is_loading,
+                   progress_mode pmode,
+                   uint64_t total_ops,
+                   volatile uint64_t *global_op_counter,
+                   volatile uint64_t *last_printed) {
   db->Init();
   ycsbc::Client client(*db, *wl);
   uint64_t oks = 0;
@@ -176,7 +195,9 @@ int main(const int argc, const char *argv[]) {
       for (unsigned int i = 0; i < num_threads; ++i) {
         uint64_t start_op = (record_count * i) / num_threads;
         uint64_t end_op = (record_count * (i + 1)) / num_threads;
-        actual_ops.emplace_back(async(launch::async, DelegateClient, db, &wls[i], end_op - start_op, true, pmode, record_count, &load_progress, &last_printed));
+        actual_ops.emplace_back(async(launch::async, DelegateClient, db,
+                                      &wls[i], end_op - start_op, true,
+                                      pmode, record_count, &load_progress, &last_printed));
       }
       assert(actual_ops.size() == num_threads);
       sum = 0;
@@ -211,8 +232,9 @@ int main(const int argc, const char *argv[]) {
       for (unsigned int i = 0; i < num_threads; ++i) {
         uint64_t start_op = (total_ops * i) / num_threads;
         uint64_t end_op = (total_ops * (i + 1)) / num_threads;
-        actual_ops.emplace_back(async(launch::async,
-                                      DelegateClient, db, &wls[i], end_op - start_op, false, pmode, total_ops, &run_progress, &last_printed));
+        actual_ops.emplace_back(async(launch::async, DelegateClient, db,
+                                      &wls[i], end_op - start_op, false,
+                                      pmode, total_ops, &run_progress, &last_printed));
       }
       assert(actual_ops.size() == num_threads);
       sum = 0;
@@ -234,7 +256,10 @@ int main(const int argc, const char *argv[]) {
   delete db;
 }
 
-void ParseCommandLine(int argc, const char *argv[], utils::Properties &props, WorkloadProperties &load_workload, vector<WorkloadProperties> &run_workloads) {
+void ParseCommandLine(int argc, const char *argv[],
+                      utils::Properties &props,
+                      WorkloadProperties &load_workload,
+                      vector<WorkloadProperties> &run_workloads) {
   bool saw_load_workload = false;
   WorkloadProperties *last_workload = NULL;
   int argindex = 1;
