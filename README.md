@@ -6,6 +6,9 @@
 - Performance improvements
 - New features (e.g. running Load and Workloads in separate executions)
 
+## Fork Notes:
+Forked to add support for [Speicher](https://github.com/cssl-unist/tweezer/tree/main/Docker/speicher_V1)
+
 ## Quick Start for Debian-based systems
 
 Install SplinterDB (https://github.com/vmware/splinterdb)
